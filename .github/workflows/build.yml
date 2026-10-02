@@ -1,0 +1,32 @@
+name: Build IPA
+
+on:
+  push:
+  workflow_dispatch:
+
+env:
+  APP: YouTube5s
+  FRAMEWORKS: -framework UIKit -framework AVFoundation -framework AVKit -framework CoreGraphics -framework QuartzCore -framework Foundation
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No Xcode project: the app is a handful of .m files, so clang is called directly.
+      - name: Compile
+        run: |
+          mkdir -p "Payload/$APP.app"
+          xcrun -sdk iphoneos clang -arch arm64 -miphoneos-version-min=12.0 -fobjc-arc -O2 \
+            *.m $FRAMEWORKS -o "Payload/$APP.app/$APP"
+          cp -R Resources/. "Payload/$APP.app/"
+          codesign --force --sign - "Payload/$APP.app"
+
+      - name: Package
+        run: zip -qr "$APP.ipa" Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP }}
+          path: ${{ env.APP }}.ipa
