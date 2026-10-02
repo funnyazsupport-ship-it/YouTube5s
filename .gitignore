@@ -2,3 +2,4 @@
 _ipa/
 *.ipa
 Payload/
+_dl_*/

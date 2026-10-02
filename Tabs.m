@@ -1,4 +1,6 @@
 #import "Tabs.h"
+#import "ShortsController.h"
+#import "YTAuth.h"
 #import "YTStore.h"
 #import "YTUI.h"
 
@@ -12,6 +14,11 @@
     // Without a Google account YouTube returns an empty home feed, so recommendations are
     // built from what was watched last on this phone.
     self.loader = ^(NSString *continuation, YTListBlock done) {
+        if ([YTAuth isLoggedIn]) {
+            // Signed in: the account's real recommendations.
+            [YTAPI accountFeed:@"FEwhat_to_watch" continuation:continuation completion:done];
+            return;
+        }
         NSString *lastId = [YTStore history].firstObject[@"id"];
         if (lastId) {
             [YTAPI watch:lastId continuation:continuation completion:^(NSDictionary *info, NSArray<NSDictionary *> *videos, NSString *next, NSError *error) {
@@ -22,6 +29,19 @@
         }
     };
     [super viewDidLoad];
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Аккаунт" style:UIBarButtonItemStylePlain target:self action:@selector(openAccount)];
+    // The feed source depends on the login state.
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(reload) name:YTAuthDidChangeNotification object:nil];
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)openAccount {
+    AccountController *account = [AccountController new];
+    account.hidesBottomBarWhenPushed = YES;
+    [self.navigationController pushViewController:account animated:YES];
 }
 
 @end
@@ -105,6 +125,10 @@
     [super viewWillAppear:animated];
     self.channels = [YTStore subscriptions];
     [self.tableView reloadData];
+    // The combined feed of new videos exists only for a signed-in account.
+    self.navigationItem.rightBarButtonItem = [YTAuth isLoggedIn]
+        ? [[UIBarButtonItem alloc] initWithTitle:@"Лента" style:UIBarButtonItemStylePlain target:self action:@selector(openFeed)]
+        : nil;
     if (self.channels.count) {
         self.tableView.backgroundView = nil;
     } else {
@@ -116,6 +140,16 @@
         label.numberOfLines = 0;
         self.tableView.backgroundView = label;
     }
+}
+
+- (void)openFeed {
+    VideoListController *feed = [VideoListController new];
+    feed.title = @"Лента подписок";
+    feed.emptyText = @"В подписках пока нет видео";
+    feed.loader = ^(NSString *continuation, YTListBlock done) {
+        [YTAPI accountFeed:@"FEsubscriptions" continuation:continuation completion:done];
+    };
+    [self.navigationController pushViewController:feed animated:YES];
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {

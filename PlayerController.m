@@ -3,6 +3,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import "VideoListController.h"
 #import "YTAPI.h"
+#import "YTAuth.h"
 #import "YTStore.h"
 #import "YTUI.h"
 
@@ -13,6 +14,8 @@
 @property (nonatomic, copy) NSString *continuation;
 @property (nonatomic, assign) BOOL loadingMore;
 @property (nonatomic, assign) BOOL descriptionExpanded;
+@property (nonatomic, assign) BOOL liked;
+@property (nonatomic, strong) UIButton *exitLandscapeButton;
 
 @property (nonatomic, strong) AVPlayerViewController *playerController;
 @property (nonatomic, strong) UILabel *messageLabel;
@@ -75,6 +78,16 @@
     [self.tableView registerClass:YTVideoCell.class forCellReuseIdentifier:@"video"];
     [self.view addSubview:self.tableView];
 
+    self.exitLandscapeButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    [self.exitLandscapeButton setTitle:@"⤡" forState:UIControlStateNormal];
+    self.exitLandscapeButton.titleLabel.font = [UIFont systemFontOfSize:22];
+    self.exitLandscapeButton.backgroundColor = [UIColor colorWithWhite:0 alpha:0.45];
+    self.exitLandscapeButton.layer.cornerRadius = 20;
+    self.exitLandscapeButton.hidden = YES;
+    [self.exitLandscapeButton addTarget:self action:@selector(exitLandscape) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:self.exitLandscapeButton];
+
+    [self updateBarButtons];
     [self buildHeader];
     [self loadStream];
     [self loadInfo];
@@ -170,9 +183,12 @@
     [super viewWillLayoutSubviews];
     CGRect bounds = self.view.bounds;
     BOOL landscape = bounds.size.width > bounds.size.height;
+    self.exitLandscapeButton.hidden = !landscape;
     if (landscape) {
         self.playerController.view.frame = bounds;
         self.tableView.hidden = YES;
+        // Left edge, vertically centred: clear of AVKit's own controls in the corners.
+        self.exitLandscapeButton.frame = CGRectMake(8, bounds.size.height / 2 - 20, 40, 40);
         return;
     }
     CGFloat top = self.view.safeAreaInsets.top;
@@ -198,6 +214,8 @@
     // AVKit's own fullscreen also triggers this, but then we are still the top controller.
     if (self.navigationController.topViewController != self) {
         [self.playerController.player pause];
+        // The lists behind this screen are portrait layouts; don't leave them sideways.
+        if (self.view.bounds.size.width > self.view.bounds.size.height) [self exitLandscape];
         [self.navigationController setNavigationBarHidden:NO animated:animated];
     }
 }
@@ -206,7 +224,7 @@
 
 - (void)loadStream {
     __weak PlayerController *weakSelf = self;
-    [YTAPI streamURL:self.video[@"id"] completion:^(NSURL *url, NSError *error) {
+    [YTAPI stream:self.video[@"id"] completion:^(NSURL *url, NSDictionary *details, NSError *error) {
         PlayerController *controller = weakSelf;
         if (!controller) return;
         if (!url) {
@@ -260,8 +278,52 @@
 - (void)toggleSubscription {
     NSString *channelId = [self channelId];
     if (!channelId.length) return;
-    [YTStore setSubscribed:![YTStore isSubscribed:channelId] channelId:channelId title:[self author]];
+    BOOL subscribe = ![YTStore isSubscribed:channelId];
+    [YTStore setSubscribed:subscribe channelId:channelId title:[self author]];
     [self updateHeader];
+    // With an account the subscription is also made for real; the local list works either way.
+    if ([YTAuth isLoggedIn]) [YTAPI setSubscribed:subscribe channelId:channelId completion:^(NSError *error) {}];
+}
+
+- (void)toggleLike {
+    self.liked = !self.liked;
+    BOOL liked = self.liked;
+    [self updateBarButtons];
+    __weak PlayerController *weakSelf = self;
+    [YTAPI setLiked:liked videoId:self.video[@"id"] completion:^(NSError *error) {
+        PlayerController *controller = weakSelf;
+        if (!controller || !error || controller.liked != liked) return;
+        controller.liked = !liked; // the server refused, roll the button back
+        [controller updateBarButtons];
+    }];
+}
+
+- (void)updateBarButtons {
+    NSMutableArray *items = [NSMutableArray array];
+    [items addObject:[[UIBarButtonItem alloc] initWithTitle:@"⤢" style:UIBarButtonItemStylePlain target:self action:@selector(enterLandscape)]];
+    if ([YTAuth isLoggedIn]) {
+        UIBarButtonItem *like = [[UIBarButtonItem alloc] initWithTitle:@"👍" style:UIBarButtonItemStylePlain target:self action:@selector(toggleLike)];
+        // Emoji ignore tint, so the liked state is shown with a prefix instead.
+        if (self.liked) like.title = @"✓👍";
+        [items addObject:like];
+    }
+    self.navigationItem.rightBarButtonItems = items;
+}
+
+#pragma mark - Rotation
+
+// Rotates the interface by hand, so fullscreen also works with the rotation lock switched on.
+- (void)forceOrientation:(UIInterfaceOrientation)orientation {
+    [[UIDevice currentDevice] setValue:@(orientation) forKey:@"orientation"];
+    [UIViewController attemptRotationToDeviceOrientation];
+}
+
+- (void)enterLandscape {
+    [self forceOrientation:UIInterfaceOrientationLandscapeRight];
+}
+
+- (void)exitLandscape {
+    [self forceOrientation:UIInterfaceOrientationPortrait];
 }
 
 - (void)openChannel {

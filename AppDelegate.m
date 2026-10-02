@@ -1,5 +1,6 @@
 #import "AppDelegate.h"
 #import <AVFoundation/AVFoundation.h>
+#import "ShortsController.h"
 #import "Tabs.h"
 #import "YTUI.h"
 
@@ -26,6 +27,7 @@
     tabs.tabBar.tintColor = UIColor.whiteColor;
     tabs.viewControllers = @[
         [self tab:[HomeController new] title:@"Главная" glyph:@"⌂"],
+        [self tab:[ShortsController new] title:@"Shorts" glyph:@"▶"],
         [self tab:[SearchController new] title:@"Поиск" glyph:@"⌕"],
         [self tab:[SubscriptionsController new] title:@"Подписки" glyph:@"☰"],
         [self tab:[HistoryController new] title:@"История" glyph:@"↺"],
@@ -36,6 +38,11 @@
     self.window.rootViewController = tabs;
     [self.window makeKeyAndVisible];
     return YES;
+}
+
+// Stated explicitly so every screen may rotate, whatever the container controllers answer.
+- (UIInterfaceOrientationMask)application:(UIApplication *)application supportedInterfaceOrientationsForWindow:(UIWindow *)window {
+    return UIInterfaceOrientationMaskAllButUpsideDown;
 }
 
 @end

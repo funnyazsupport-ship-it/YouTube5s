@@ -6,7 +6,7 @@ on:
 
 env:
   APP: YouTube5s
-  FRAMEWORKS: -framework UIKit -framework AVFoundation -framework AVKit -framework CoreGraphics -framework QuartzCore -framework Foundation
+  FRAMEWORKS: -framework UIKit -framework AVFoundation -framework AVKit -framework CoreGraphics -framework QuartzCore -framework CoreMedia -framework Security -framework Foundation
 
 jobs:
   build:
